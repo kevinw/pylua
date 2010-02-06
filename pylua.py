@@ -1,9 +1,13 @@
 import cStringIO
 import sys
+import os
 import ast
 import subprocess
 
-lua_exe = r'c:\users\kevin\src\luajit-2.0\src\luajit.exe'
+if os.name == 'nt':
+    lua_exe = r'c:\users\kevin\src\luajit-2.0\src\luajit.exe'
+else:
+    lua_exe = r'/Users/Kevin/src/luajit-2.0/src/luajit'
 
 def dump(node, annotate_fields=True, include_attributes=False, whitespace=False):
     """
