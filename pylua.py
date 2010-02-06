@@ -10,6 +10,10 @@ class PyLua(ast.NodeVisitor):
         self.stream = cStringIO.StringIO()
         self.indent = 0
 
+    def visit_all(self, nodes):
+        for node in nodes:
+            self.visit(node)
+
     def visit(self, node):
         super(PyLua, self).visit(node)
 
@@ -24,6 +28,12 @@ class PyLua(ast.NodeVisitor):
     def visit_Add(self, node):
         self.emit('+')
 
+    def visit_Mult(self, node):
+        self.emit('*')
+
+    def visit_Sub(self, node):
+        self.emit('-')
+
     def visit_Return(self, node):
         self.emit('return ')
         self.generic_visit(node)
@@ -33,18 +43,41 @@ class PyLua(ast.NodeVisitor):
         v.update(**vars(node))
 
         self.emit('\n')
-        self.emit('%(name)s = function()\n' % v)
+        self.emit('%(name)s = function(' % v)
+        self.visit(node.args)
+        self.emit(')\n')
 
         self.push_scope()
-        self.generic_visit(node)
+        self.visit_all(node.body)
         self.pop_scope()
 
         self.emit('\n')
         self.emit('end\n')
 
+    def visit_BinOp(self, node):
+        self.visit(node.left)
+        self.visit(node.op)
+        self.visit(node.right)
+
+    def visit_IfExp(self, node):
+        self.visit(node.test)
+        self.emit(' and ')
+        self.visit(node.body)
+        self.emit(' or ')
+        self.visit(node.orelse)
+
     def visit_Call(self, node):
         self.visit(node.func)
         self.emit('()')
+
+    def visit_Compare(self, node):
+        self.visit(node.left)
+        self.visit_all(node.ops)
+        print node.comparators
+        self.visit_all(node.comparators)
+
+    def visit_Eq(self, node):
+        self.emit('==')
 
     def visit_Name(self, node):
         self.emit(node.id)
