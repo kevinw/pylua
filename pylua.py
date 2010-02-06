@@ -5,6 +5,38 @@ import subprocess
 
 lua_exe = r'c:\users\kevin\src\luajit-2.0\src\luajit.exe'
 
+def dump(node, annotate_fields=True, include_attributes=False, whitespace=False):
+    """
+    Return a formatted dump of the tree in *node*.  This is mainly useful for
+    debugging purposes.  The returned string will show the names and the values
+    for fields.  This makes the code impossible to evaluate, so if evaluation is
+    wanted *annotate_fields* must be set to False.  Attributes such as line
+    numbers and column offsets are not dumped by default.  If this is wanted,
+    *include_attributes* can be set to True.
+    """
+    def _format(node, indent=0):
+        sp = ('  ' * (indent+1)) if whitespace else ''
+        nl = '\n' if whitespace else ''
+
+        if isinstance(node, ast.AST):
+            fields = [(a, _format(b, indent+1)) for a, b in ast.iter_fields(node)]
+            rv = '%s(%s%s%s' % (node.__class__.__name__, nl, sp, ', '.join(
+                ('%s=%s' % field for field in fields)
+                if annotate_fields else
+                (b for a, b in fields)
+            ))
+            if include_attributes and node._attributes:
+                rv += fields and ', ' or ' '
+                rv += ', '.join('%s=%s' % (a, _format(getattr(node, a), indent+1))
+                                for a in node._attributes)
+            return rv + ')'
+        elif isinstance(node, list):
+            return '[%s%s%s]' % (nl, sp, ', '.join(_format(x, indent+1) for x in node))
+        return repr(node)
+    if not isinstance(node, ast.AST):
+        raise TypeError('expected AST, got %r' % node.__class__.__name__)
+    return _format(node)
+
 class PyLua(ast.NodeVisitor):
     def __init__(self):
         self.stream = cStringIO.StringIO()
@@ -103,7 +135,7 @@ def main():
     visitor.visit(tree)
 
     lua_program = visitor.stream.getvalue()
-    print ast.dump(tree, include_attributes=True)
+    print dump(tree, include_attributes=True, whitespace=True)
     print '-'*80
     print lua_program
     print '-'*80
