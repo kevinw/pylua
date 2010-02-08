@@ -4,11 +4,11 @@ import os
 import ast
 import subprocess
 
-if os.name == 'nt':
-    lua_exe = r'c:\users\kevin\src\luajit-2.0\src\luajit.exe'
-else:
-    lua_exe = r'/Users/Kevin/src/luajit-2.0/src/luajit'
+lua_exe = '~/src/luajit-2.0/src/luajit'
+lua_exe = os.path.normpath(os.path.expanduser(lua_exe))
 
+# a modified version of the function from ast.py, with an optional "whitespace"
+# argument
 def dump(node, annotate_fields=True, include_attributes=False, whitespace=False):
     """
     Return a formatted dump of the tree in *node*.  This is mainly useful for
@@ -67,13 +67,16 @@ class PyLua(ast.NodeVisitor):
     def visit_Mult(self, node):
         self.emit('*')
 
+    def visit_Div(self, node):
+        self.emit('/')
+
     def visit_Sub(self, node):
         self.emit('-')
 
     def visit_Return(self, node):
         self.emit('return ')
         self.generic_visit(node)
-    
+
     def visit_FunctionDef(self, node):
         v = dict(body='foo')
         v.update(**vars(node))
@@ -91,9 +94,16 @@ class PyLua(ast.NodeVisitor):
         self.emit('end\n')
 
     def visit_BinOp(self, node):
-        self.visit(node.left)
-        self.visit(node.op)
-        self.visit(node.right)
+        if isinstance(node.op, ast.Pow):
+            self.emit('math.pow(')
+            self.visit(node.left)
+            self.emit(', ')
+            self.visit(node.right)
+            self.emit(')')
+        else:
+            self.visit(node.left)
+            self.visit(node.op)
+            self.visit(node.right)
 
     def visit_IfExp(self, node):
         self.visit(node.test)
@@ -116,6 +126,24 @@ class PyLua(ast.NodeVisitor):
     def visit_Eq(self, node):
         self.emit('==')
 
+    def visit_Subscript(self, node):
+        self.visit(node.value)
+        self.emit('[')
+        if isinstance(node.slice, ast.Index):
+            if isinstance(node.slice.value, ast.Num):
+                self.emit('%d' % (node.slice.value.n + 1))
+            else:
+                self.visit(node.slice)
+        self.emit(']')
+
+
+    def visit_Tuple(self, node):
+        self.emit('{')
+        for el in node.elts:
+            self.visit(el)
+            self.emit(', ')
+        self.emit('}')
+
     def visit_Name(self, node):
         self.emit(node.id)
 
@@ -128,8 +156,8 @@ class PyLua(ast.NodeVisitor):
     def emit(self, val):
         self.stream.write(val)
 
-def main():
-    filename = sys.argv[1]
+_dump_ast=dump
+def run_file(filename, dump=False):
     contents = open(filename, 'rU').read()
     if not contents.endswith('\n'):
         contents += '\n'
@@ -140,20 +168,27 @@ def main():
     visitor.visit(tree)
 
     lua_program = visitor.stream.getvalue()
-    print dump(tree, include_attributes=True, whitespace=True)
-    print '-'*80
-    print lua_program
-    print '-'*80
-    print runjit(lua_program)
+    if dump:
+        print _dump_ast(tree, include_attributes=True, whitespace=True)
+        print '-'*80
+        print lua_program
+        print '-'*80
+    else:
+        return runjit(lua_program)
+
+def main():
+    filename = sys.argv[1]
+    print run_file(filename)
 
 def runjit(program):
-    filename = 'temp.lua'
+    filename = '_pylua_temp.lua'
     open(filename, 'wb').write(program)
-
-    args = [lua_exe, filename]
-    process = subprocess.Popen(args, stdout = subprocess.PIPE)
-
-    stdout, stderr = process.communicate()
+    try:
+        args = [lua_exe, filename]
+        process = subprocess.Popen(args, stdout = subprocess.PIPE)
+        stdout, stderr = process.communicate()
+    finally:
+        os.remove(filename)
 
     return stdout
 
