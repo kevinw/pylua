@@ -100,12 +100,13 @@ class PyLua(ast.NodeVisitor):
 
     def visit_Call(self, node):
         self.visit(node.func)
-        self.emit('()')
+        self.emit('(')
+        self.visit_all(node.args)
+        self.emit(')')
 
     def visit_Compare(self, node):
         self.visit(node.left)
         self.visit_all(node.ops)
-        print node.comparators
         self.visit_all(node.comparators)
 
     def visit_Eq(self, node):
