@@ -325,6 +325,38 @@ class PyLua(ast.NodeVisitor):
             self.visit(node.value)
             self.eol()  # TODO: yes, or no?
 
+    def visit_Import(self, node):
+        for x in node.names:
+            if isinstance(x, ast.alias):
+                self.indent()
+                self.emit('local ')
+                if x.asname:
+                    self.emit(x.asname)
+                else:
+                    self.emit(x.name)
+                self.emit(" = require('")
+                self.emit(x.name)
+                self.emit("')\n")
+            else:
+                self.emit("-- FIXME: "+x.__class__.__name__)
+
+    def visit_ImportFrom(self, node):
+        for x in node.names:
+            if isinstance(x, ast.alias):
+                self.indent()
+                self.emit('local ')
+                if x.asname:
+                    self.emit(x.asname)
+                else:
+                    self.emit(x.name)
+                self.emit(" = require('")
+                self.emit(node.module)
+                self.emit("').")
+                self.emit(x.name)
+                self.eol()
+            else:
+                self.emit("-- FIXME: "+x.__class__.__name__)
+
     def visit_ClassDef(self, node):
         self.eol()
         self.indent()
@@ -468,6 +500,7 @@ class PyLua(ast.NodeVisitor):
         self.emit(node.attr)
 
     def visit_Str(self, node):
+        # TODO: prettier multiline strings (but must not have escape sequences other than \n)
         self.emit("'")
         # FIXME: better escaping of strings
         self.emit(node.s.encode('utf8').encode('string_escape'))
