@@ -177,8 +177,23 @@ class PyLua(ast.NodeVisitor):
     def visit_Call(self, node):
         self.visit(node.func)
         self.emit('(')
-        self.visit_all_sep(node.args, ', ')
+        first = True
+        if len(node.keywords)>0:
+            first = False
+            self.emit('pylua.keywords(')
+            self.visit_all_sep(node.keywords, ', ')
+            self.emit(')')
+        if len(node.args)>0:
+            if first:
+                first = False
+            else:
+                self.emit(', ')
+            self.visit_all_sep(node.args, ', ')
         self.emit(')')
+    def visit_keyword(self, node):
+        self.emit(node.arg)
+        self.emit('=')
+        self.visit(node.value)
 
     def visit_Compare(self, node):
         self.visit(node.left)
@@ -291,6 +306,10 @@ class PyLua(ast.NodeVisitor):
         self.indent()
         self.emit('goto ::continue::\n')
 
+    def visit_ListComp(self, node):
+        # FIXME LATER
+        self.emit('pylua.COMPREHENSION()')
+
     def visit_Compare(self, node):
         if len(node.ops)==1 and isinstance(node.ops[0], ast.In):
             self.emit('pylua.op_in(')
@@ -300,6 +319,12 @@ class PyLua(ast.NodeVisitor):
             self.emit(')')
         elif len(node.ops)==1 and isinstance(node.ops[0], ast.Is):
             self.emit('pylua.op_is(')
+            self.visit(node.left)
+            self.emit(', ')
+            self.visit_all_sep(node.comparators, ', ')
+            self.emit(')')
+        elif len(node.ops)==1 and isinstance(node.ops[0], ast.IsNot):
+            self.emit('pylua.op_is_not(')
             self.visit(node.left)
             self.emit(', ')
             self.visit_all_sep(node.comparators, ', ')
