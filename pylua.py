@@ -265,20 +265,27 @@ class PyLua(ast.NodeVisitor):
     def visit_If(self, node):
         self.indent()
         self.emit('if ')
-        self.visit(node.test)
-        self.emit(' then\n')
+        def test_plus_body(self, node):
+            self.visit(node.test)
+            self.emit(' then\n')
 
-        self.push_scope()
-        self.visit_all(node.body)
-        self.pop_scope()
-
-        if node.orelse:
-            # TODO: optimize elif into 'elseif'
-            self.indent()
-            self.emit('else\n')
             self.push_scope()
-            self.visit_all(node.orelse)
+            self.visit_all(node.body)
             self.pop_scope()
+
+            if node.orelse:
+                if len(node.orelse)==1 and isinstance(node.orelse[0], ast.If):
+                    # optimize elif into 'elseif'
+                    self.indent()
+                    self.emit('elseif ')
+                    test_plus_body(self, node.orelse[0])
+                else:
+                    self.indent()
+                    self.emit('else\n')
+                    self.push_scope()
+                    self.visit_all(node.orelse)
+                    self.pop_scope()
+        test_plus_body(self, node)
 
         self.indent()
         self.emit('end\n')
