@@ -417,7 +417,7 @@ class PyLua(ast.NodeVisitor):
     def visit_For(self, node):
         self.indent()
         if node.target and node.iter:
-            self.emit('for ')
+            self.emit('for _, ')
             self.visit(node.target)
             self.emit(' in ipairs(')
             self.visit(node.iter)
