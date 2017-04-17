@@ -137,7 +137,7 @@ class PyLua(ast.NodeVisitor):
             self.visit(node.right)
             self.emit(')')
         elif isinstance(node.op, ast.Mod):
-            self.emit('pylua.mod(')
+            self.emit('PYLUA.mod(')
             self.visit(node.left)
             self.emit(', ')
             self.visit(node.right)
@@ -185,7 +185,7 @@ class PyLua(ast.NodeVisitor):
         first = True
         if len(node.keywords)>0:
             first = False
-            self.emit('pylua.keywords{')
+            self.emit('PYLUA.keywords{')
             self.visit_all_sep(node.keywords, ', ')
             self.emit('}')
         if len(node.args)>0:
@@ -215,8 +215,8 @@ class PyLua(ast.NodeVisitor):
                 self.visit(node.slice)
             self.emit(']')
         elif isinstance(node.slice, ast.Slice):
-            # TODO: pylua.slice because other for string vs. table
-            self.emit('pylua.slice(')
+            # TODO: PYLUA.slice because other for string vs. table
+            self.emit('PYLUA.slice(')
             self.visit(node.value)
             self.emit(', ')
             self.visit_or(node.slice.lower, 'nil')
@@ -266,7 +266,7 @@ class PyLua(ast.NodeVisitor):
         self.indent()
         if isinstance(node.value, ast.Str):
             self.emit('-- ')
-            self.emit(node.value.s)
+            self.emit(node.value.s.replace('\n', '\n-- '))
         else:
             self.visit(node.value)
         self.eol()  # TODO: yes, or no?
@@ -324,29 +324,29 @@ class PyLua(ast.NodeVisitor):
 
     def visit_ListComp(self, node):
         # FIXME LATER
-        self.emit('pylua.COMPREHENSION()')
+        self.emit('PYLUA.COMPREHENSION()')
 
     def visit_Compare(self, node):
         if len(node.ops)==1 and isinstance(node.ops[0], ast.NotIn):
-            self.emit('pylua.op_not_in(')
+            self.emit('PYLUA.op_not_in(')
             self.visit(node.left)
             self.emit(', ')
             self.visit_all_sep(node.comparators, ', ')
             self.emit(')')
         elif len(node.ops)==1 and isinstance(node.ops[0], ast.In):
-            self.emit('pylua.op_in(')
+            self.emit('PYLUA.op_in(')
             self.visit(node.left)
             self.emit(', ')
             self.visit_all_sep(node.comparators, ', ')
             self.emit(')')
         elif len(node.ops)==1 and isinstance(node.ops[0], ast.Is):
-            self.emit('pylua.op_is(')
+            self.emit('PYLUA.op_is(')
             self.visit(node.left)
             self.emit(', ')
             self.visit_all_sep(node.comparators, ', ')
             self.emit(')')
         elif len(node.ops)==1 and isinstance(node.ops[0], ast.IsNot):
-            self.emit('pylua.op_is_not(')
+            self.emit('PYLUA.op_is_not(')
             self.visit(node.left)
             self.emit(', ')
             self.visit_all_sep(node.comparators, ', ')
@@ -376,7 +376,7 @@ class PyLua(ast.NodeVisitor):
 
     def visit_Attribute(self, node):
         if node.attr in ['join']:
-            self.emit('pylua.str_maybe(')
+            self.emit('PYLUA.str_maybe(')
             self.visit(node.value)
             self.emit(')')
         else:
