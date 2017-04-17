@@ -263,13 +263,45 @@ class PyLua(ast.NodeVisitor):
         self.eol()
 
     def visit_Expr(self, node):
-        self.indent()
         if isinstance(node.value, ast.Str):
-            self.emit('-- ')
-            self.emit(node.value.s.replace('\n', '\n-- '))
+            for line in node.value.s.splitlines():
+                self.indent()
+                self.emit('-- ')
+                self.emit(line)
+                self.eol()
         else:
+            self.indent()
             self.visit(node.value)
-        self.eol()  # TODO: yes, or no?
+            self.eol()  # TODO: yes, or no?
+
+    def visit_ClassDef(self, node):
+        self.eol()
+        self.indent()
+        self.emit(node.name)
+        self.emit(' = PYLUA.class(')
+        self.visit_all_sep(node.bases, ', ')
+        self.emit(') {\n')
+
+        self.push_scope()
+        for x in node.body:
+            if isinstance(x, ast.Expr):
+                self.visit(x)
+            elif isinstance(x, ast.FunctionDef):
+                self.visit(x)
+                self.indent()
+                self.emit(';\n')
+            else:
+                self.emit('-- FIXME ast.'+x.__class__.__name__)
+                self.eol()
+        self.pop_scope()
+
+        self.emit('}\n\n')
+
+    def visit_Raise(self, node):
+        self.indent()
+        self.emit('error(')
+        self.visit(node.type)
+        self.emit(')\n')
 
     def visit_If(self, node):
         self.indent()
