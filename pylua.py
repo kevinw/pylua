@@ -136,6 +136,16 @@ class PyLua(ast.NodeVisitor):
         self.visit_all_sep(node.args, ', ')
         # FIXME: kwargs, ...
 
+    def visit_Print(self, node):
+        self.indent()
+        self.emit('io.write(')
+        self.visit_all_sep(node.values, ', ')
+        if node.nl:
+            if len(node.values)>0:
+                self.emit(', ')
+            self.emit(r"'\n'")
+        self.emit(')\n')
+
     def visit_BinOp(self, node):
         if isinstance(node.op, ast.Pow):
             self.emit('math.pow(')
