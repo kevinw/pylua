@@ -183,9 +183,9 @@ class PyLua(ast.NodeVisitor):
         first = True
         if len(node.keywords)>0:
             first = False
-            self.emit('pylua.keywords(')
+            self.emit('pylua.keywords{')
             self.visit_all_sep(node.keywords, ', ')
-            self.emit(')')
+            self.emit('}')
         if len(node.args)>0:
             if first:
                 first = False
@@ -262,7 +262,11 @@ class PyLua(ast.NodeVisitor):
 
     def visit_Expr(self, node):
         self.indent()
-        self.visit(node.value)
+        if isinstance(node.value, ast.Str):
+            self.emit('-- ')
+            self.emit(node.value.s)
+        else:
+            self.visit(node.value)
         self.eol()  # TODO: yes, or no?
 
     def visit_If(self, node):
@@ -314,7 +318,7 @@ class PyLua(ast.NodeVisitor):
     def visit_Continue(self, node):
         # FIXME LATER
         self.indent()
-        self.emit('goto ::continue::\n')
+        self.emit('goto continue\n')
 
     def visit_ListComp(self, node):
         # FIXME LATER
@@ -363,7 +367,12 @@ class PyLua(ast.NodeVisitor):
         self.emit(' or ')
 
     def visit_Attribute(self, node):
-        self.visit(node.value)
+        if node.attr in ['join']:
+            self.emit('pylua.str_maybe(')
+            self.visit(node.value)
+            self.emit(')')
+        else:
+            self.visit(node.value)
         self.emit('.')
         self.emit(node.attr)
 
