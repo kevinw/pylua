@@ -327,7 +327,13 @@ class PyLua(ast.NodeVisitor):
         self.emit('pylua.COMPREHENSION()')
 
     def visit_Compare(self, node):
-        if len(node.ops)==1 and isinstance(node.ops[0], ast.In):
+        if len(node.ops)==1 and isinstance(node.ops[0], ast.NotIn):
+            self.emit('pylua.op_not_in(')
+            self.visit(node.left)
+            self.emit(', ')
+            self.visit_all_sep(node.comparators, ', ')
+            self.emit(')')
+        elif len(node.ops)==1 and isinstance(node.ops[0], ast.In):
             self.emit('pylua.op_in(')
             self.visit(node.left)
             self.emit(', ')
