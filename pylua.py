@@ -78,13 +78,10 @@ class PyLua(ast.NodeVisitor):
 
     def visit_Add(self, node):
         self.emit('+')
-
     def visit_Mult(self, node):
         self.emit('*')
-
     def visit_Div(self, node):
         self.emit('/')
-
     def visit_Sub(self, node):
         self.emit('-')
 
@@ -146,19 +143,24 @@ class PyLua(ast.NodeVisitor):
             self.visit(node.right)
             self.emit(')')
         else:
+            self.emit_paren_maybe(node, node.left, '(')
             self.visit(node.left)
+            self.emit_paren_maybe(node, node.left, ')')
             self.visit(node.op)
+            self.emit_paren_maybe(node, node.right, '(')
             self.visit(node.right)
+            self.emit_paren_maybe(node, node.right, ')')
 
     def visit_BoolOp(self, node):
-        # FIXME here and in similar: resolve parentheses and priorities!
         first = True
         for x in node.values:
             if first:
                 first = False
             else:
                 self.visit(node.op)
+            self.emit_paren_maybe(node, x, '(')
             self.visit(x)
+            self.emit_paren_maybe(node, x, ')')
 
     def visit_UnaryOp(self, node):
         self.visit(node.op)
@@ -168,6 +170,7 @@ class PyLua(ast.NodeVisitor):
         self.emit(' not ')
 
     def visit_IfExp(self, node):
+        # FIXME here and in similar: resolve parentheses and priorities!
         self.visit(node.test)
         self.emit(' and ')
         self.visit(node.body)
@@ -373,9 +376,26 @@ class PyLua(ast.NodeVisitor):
 
     def push_scope(self):
         self.indentation += 1
-
     def pop_scope(self):
         self.indentation -= 1
+
+    def emit_paren_maybe(self, parent, child, text):
+        if isinstance(parent, ast.BinOp) and isinstance(child, ast.BinOp) and \
+                (isinstance(parent.op, ast.Mult) or isinstance(parent.op, ast.Div)) and \
+                (isinstance(child.op, ast.Add) or isinstance(child.op, ast.Sub)):
+            self.emit(text)
+            return
+        if isinstance(parent, ast.BinOp) and isinstance(child, ast.BoolOp):
+            self.emit(text)
+            return
+        if isinstance(parent, ast.BoolOp) and isinstance(child, ast.BoolOp) and \
+                isinstance(parent.op, ast.And) and isinstance(child.op, ast.Or):
+            self.emit(text)
+            return
+        if isinstance(parent, ast.UnaryOp) and isinstance(parent.op, ast.Not) and \
+                isinstance(child, ast.BoolOp):
+            self.emit(text)
+            return
 
     def indent(self):
         self.emit('  '*self.indentation)
