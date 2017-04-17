@@ -168,6 +168,8 @@ class PyLua(ast.NodeVisitor):
 
     def visit_Not(self, node):
         self.emit(' not ')
+    def visit_USub(self, node):
+        self.emit('-')
 
     def visit_IfExp(self, node):
         # FIXME here and in similar: resolve parentheses and priorities!
