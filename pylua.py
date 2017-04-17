@@ -89,8 +89,10 @@ class PyLua(ast.NodeVisitor):
         self.emit('-')
 
     def visit_Return(self, node):
+        self.indent()
         self.emit('return ')
         self.generic_visit(node)
+        self.eol()
 
     def visit_FunctionDef(self, node):
         v = dict(body='foo')
@@ -107,7 +109,19 @@ class PyLua(ast.NodeVisitor):
         self.pop_scope()
 
         #self.emit('\n')
+        self.indent()
         self.emit('end\n')
+
+    def visit_Dict(self, node):
+        self.emit('{ ')
+        for k,v in zip(node.keys, node.values):
+            # TODO: optimize pretty keys
+            self.emit('[')
+            self.visit(k)
+            self.emit(']=')
+            self.visit(v)
+            self.emit(', ')
+        self.emit('}')
 
     def visit_arguments(self, node):
         self.visit_all_sep(node.args, ', ')
@@ -176,7 +190,6 @@ class PyLua(ast.NodeVisitor):
         else:
             self.emit('[ ? ]')
 
-
     def visit_Tuple(self, node):
         self.emit('{')
         for el in node.elts:
@@ -185,7 +198,10 @@ class PyLua(ast.NodeVisitor):
         self.emit('}')
 
     def visit_Name(self, node):
-        self.emit(node.id)
+        if node.id == 'None':
+            self.emit('nil')
+        else:
+            self.emit(node.id)
 
     def visit_Assign(self, node):
         self.indent()
@@ -193,6 +209,15 @@ class PyLua(ast.NodeVisitor):
             self.visit(x)
             self.emit(' ')
         self.emit('= ')
+        self.visit(node.value)
+        self.eol()
+
+    def visit_AugAssign(self, node):
+        self.indent()
+        self.visit(node.target)
+        self.emit(' = ')
+        self.visit(node.target)
+        self.visit(node.op)
         self.visit(node.value)
         self.eol()
 
