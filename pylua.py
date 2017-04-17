@@ -59,6 +59,12 @@ class PyLua(ast.NodeVisitor):
                 self.emit(sep)
             self.visit(node)
 
+    def visit_or(self, node, orelse):
+        if node:
+            self.visit(node)
+        else:
+            self.emit(orelse)
+
     def visit(self, node):
         super(PyLua, self).visit(node)
 
@@ -103,9 +109,19 @@ class PyLua(ast.NodeVisitor):
         #self.emit('\n')
         self.emit('end\n')
 
+    def visit_arguments(self, node):
+        self.visit_all_sep(node.args, ', ')
+        # FIXME: kwargs, ...
+
     def visit_BinOp(self, node):
         if isinstance(node.op, ast.Pow):
             self.emit('math.pow(')
+            self.visit(node.left)
+            self.emit(', ')
+            self.visit(node.right)
+            self.emit(')')
+        elif isinstance(node.op, ast.Mod):
+            self.emit('pylua.mod(')
             self.visit(node.left)
             self.emit(', ')
             self.visit(node.right)
@@ -137,14 +153,28 @@ class PyLua(ast.NodeVisitor):
         self.emit('==')
 
     def visit_Subscript(self, node):
-        self.visit(node.value)
-        self.emit('[')
         if isinstance(node.slice, ast.Index):
+            self.visit(node.value)
+            self.emit('[')
             if isinstance(node.slice.value, ast.Num):
                 self.emit('%d' % (node.slice.value.n + 1))
             else:
                 self.visit(node.slice)
-        self.emit(']')
+            self.emit(']')
+        elif isinstance(node.slice, ast.Slice):
+            # TODO: pylua.slice because other for string vs. table
+            self.emit('pylua.slice(')
+            self.visit(node.value)
+            self.emit(', ')
+            self.visit_or(node.slice.lower, 'nil')
+            self.emit(', ')
+            self.visit_or(node.slice.upper, 'nil')
+            if node.slice.step:
+                self.emit(', ')
+                self.visit(node.step)
+            self.emit(')')
+        else:
+            self.emit('[ ? ]')
 
 
     def visit_Tuple(self, node):
@@ -165,6 +195,50 @@ class PyLua(ast.NodeVisitor):
         self.emit('= ')
         self.visit(node.value)
         self.eol()
+
+    def visit_Expr(self, node):
+        self.indent()
+        self.visit(node.value)
+        self.eol()  # TODO: yes, or no?
+
+    def visit_If(self, node):
+        self.indent()
+        self.emit('if ')
+        self.visit(node.test)
+        self.emit(' then\n')
+
+        self.push_scope()
+        self.visit_all(node.body)
+        self.pop_scope()
+
+        if node.orelse:
+            # TODO: optimize elif into 'elseif'
+            self.indent()
+            self.emit('else\n')
+            self.push_scope()
+            self.visit_all(node.orelse)
+            self.pop_scope()
+
+        self.indent()
+        self.emit('end\n')
+
+    def visit_Compare(self, node):
+        self.visit(node.left)
+        self.visit_all(node.ops)
+        self.visit_all(node.comparators)
+
+    def visit_Lt(self, node):
+        self.emit('<')
+    def visit_LtE(self, node):
+        self.emit('<=')
+    def visit_Gt(self, node):
+        self.emit('>')
+    def visit_GtE(self, node):
+        self.emit('>=')
+    def visit_Eq(self, node):
+        self.emit('==')
+    def visit_NotEq(self, node):
+        self.emit('~=')
 
     def visit_Attribute(self, node):
         self.visit(node.value)
