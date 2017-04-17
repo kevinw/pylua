@@ -123,6 +123,11 @@ class PyLua(ast.NodeVisitor):
             self.emit(', ')
         self.emit('}')
 
+    def visit_List(self, node):
+        self.emit('{')
+        self.visit_all_sep(node.elts, ', ')
+        self.emit('}')
+
     def visit_arguments(self, node):
         self.visit_all_sep(node.args, ', ')
         # FIXME: kwargs, ...
@@ -145,6 +150,23 @@ class PyLua(ast.NodeVisitor):
             self.visit(node.op)
             self.visit(node.right)
 
+    def visit_BoolOp(self, node):
+        # FIXME here and in similar: resolve parentheses and priorities!
+        first = True
+        for x in node.values:
+            if first:
+                first = False
+            else:
+                self.visit(node.op)
+            self.visit(x)
+
+    def visit_UnaryOp(self, node):
+        self.visit(node.op)
+        self.visit(node.operand)
+
+    def visit_Not(self, node):
+        self.emit(' not ')
+
     def visit_IfExp(self, node):
         self.visit(node.test)
         self.emit(' and ')
@@ -162,9 +184,6 @@ class PyLua(ast.NodeVisitor):
         self.visit(node.left)
         self.visit_all(node.ops)
         self.visit_all(node.comparators)
-
-    def visit_Eq(self, node):
-        self.emit('==')
 
     def visit_Subscript(self, node):
         if isinstance(node.slice, ast.Index):
@@ -191,15 +210,17 @@ class PyLua(ast.NodeVisitor):
             self.emit('[ ? ]')
 
     def visit_Tuple(self, node):
-        self.emit('{')
-        for el in node.elts:
-            self.visit(el)
-            self.emit(', ')
-        self.emit('}')
+        #self.emit('{')
+        self.visit_all_sep(node.elts, ', ')
+        #self.emit('}')
 
     def visit_Name(self, node):
         if node.id == 'None':
             self.emit('nil')
+        elif node.id == 'True':
+            self.emit('true')
+        elif node.id == 'False':
+            self.emit('false')
         else:
             self.emit(node.id)
 
@@ -247,10 +268,46 @@ class PyLua(ast.NodeVisitor):
         self.indent()
         self.emit('end\n')
 
+    def visit_For(self, node):
+        self.indent()
+        if node.target and node.iter:
+            self.emit('for ')
+            self.visit(node.target)
+            self.emit(' in ipairs(')
+            self.visit(node.iter)
+            self.emit(') do\n')
+
+            self.push_scope()
+            self.visit_all(node.body)
+            self.pop_scope()
+
+            self.indent()
+            self.emit('end\n')
+        else:
+            self.emit('FOR ... ?\n')
+
+    def visit_Continue(self, node):
+        # FIXME LATER
+        self.indent()
+        self.emit('goto ::continue::\n')
+
     def visit_Compare(self, node):
-        self.visit(node.left)
-        self.visit_all(node.ops)
-        self.visit_all(node.comparators)
+        if len(node.ops)==1 and isinstance(node.ops[0], ast.In):
+            self.emit('pylua.op_in(')
+            self.visit(node.left)
+            self.emit(', ')
+            self.visit_all_sep(node.comparators, ', ')
+            self.emit(')')
+        elif len(node.ops)==1 and isinstance(node.ops[0], ast.Is):
+            self.emit('pylua.op_is(')
+            self.visit(node.left)
+            self.emit(', ')
+            self.visit_all_sep(node.comparators, ', ')
+            self.emit(')')
+        else:
+            self.visit(node.left)
+            self.visit_all(node.ops)
+            self.visit_all(node.comparators)
 
     def visit_Lt(self, node):
         self.emit('<')
@@ -264,6 +321,11 @@ class PyLua(ast.NodeVisitor):
         self.emit('==')
     def visit_NotEq(self, node):
         self.emit('~=')
+
+    def visit_And(self, node):
+        self.emit(' and ')
+    def visit_Or(self, node):
+        self.emit(' or ')
 
     def visit_Attribute(self, node):
         self.visit(node.value)
