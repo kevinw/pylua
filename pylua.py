@@ -44,10 +44,19 @@ def dump(node, annotate_fields=True, include_attributes=False, whitespace=False)
 class PyLua(ast.NodeVisitor):
     def __init__(self):
         self.stream = cStringIO.StringIO()
-        self.indent = 0
+        self.indentation = 0
 
     def visit_all(self, nodes):
         for node in nodes:
+            self.visit(node)
+
+    def visit_all_sep(self, nodes, sep):
+        first = True
+        for node in nodes:
+            if first:
+                first = False
+            else:
+                self.emit(sep)
             self.visit(node)
 
     def visit(self, node):
@@ -82,6 +91,7 @@ class PyLua(ast.NodeVisitor):
         v.update(**vars(node))
 
         self.emit('\n')
+        self.indent()
         self.emit('%(name)s = function(' % v)
         self.visit(node.args)
         self.emit(')\n')
@@ -90,7 +100,7 @@ class PyLua(ast.NodeVisitor):
         self.visit_all(node.body)
         self.pop_scope()
 
-        self.emit('\n')
+        #self.emit('\n')
         self.emit('end\n')
 
     def visit_BinOp(self, node):
@@ -115,7 +125,7 @@ class PyLua(ast.NodeVisitor):
     def visit_Call(self, node):
         self.visit(node.func)
         self.emit('(')
-        self.visit_all(node.args)
+        self.visit_all_sep(node.args, ', ')
         self.emit(')')
 
     def visit_Compare(self, node):
@@ -147,11 +157,37 @@ class PyLua(ast.NodeVisitor):
     def visit_Name(self, node):
         self.emit(node.id)
 
+    def visit_Assign(self, node):
+        self.indent()
+        for x in node.targets:
+            self.visit(x)
+            self.emit(' ')
+        self.emit('= ')
+        self.visit(node.value)
+        self.eol()
+
+    def visit_Attribute(self, node):
+        self.visit(node.value)
+        self.emit('.')
+        self.emit(node.attr)
+
+    def visit_Str(self, node):
+        self.emit("'")
+        # FIXME: better escaping of strings
+        self.emit(node.s.encode('utf8').encode('string_escape'))
+        #self.emit(node.s.replace('\\', '\\\\').replace('"', '\\"'))
+        self.emit("'")
+
     def push_scope(self):
-        self.indent += 1
+        self.indentation += 1
 
     def pop_scope(self):
-        self.indent -= 1
+        self.indentation -= 1
+
+    def indent(self):
+        self.emit('  '*self.indentation)
+    def eol(self):
+        self.emit('\n')
 
     def emit(self, val):
         self.stream.write(val)
@@ -170,27 +206,28 @@ def run_file(filename, dump=False):
     lua_program = visitor.stream.getvalue()
     if dump:
         print _dump_ast(tree, include_attributes=True, whitespace=True)
-        print '-'*80
-        print lua_program
-        print '-'*80
-    else:
-        return runjit(lua_program)
+    #    print '-'*80
+    #    print lua_program
+    #    print '-'*80
+    #else:
+    #    return runjit(lua_program)
+    return runjit(lua_program)
 
 def main():
     filename = sys.argv[1]
-    print run_file(filename)
+    print run_file(filename, True)
 
 def runjit(program):
     filename = '_pylua_temp.lua'
     open(filename, 'wb').write(program)
-    try:
-        args = [lua_exe, filename]
-        process = subprocess.Popen(args, stdout = subprocess.PIPE)
-        stdout, stderr = process.communicate()
-    finally:
-        os.remove(filename)
+    #try:
+    #    args = [lua_exe, filename]
+    #    process = subprocess.Popen(args, stdout = subprocess.PIPE)
+    #    stdout, stderr = process.communicate()
+    #finally:
+    #    os.remove(filename)
 
-    return stdout
+    #return stdout
 
 if __name__ == '__main__':
     main()
