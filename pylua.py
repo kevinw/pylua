@@ -2,6 +2,7 @@ import cStringIO
 import sys
 import os
 import ast
+import re
 import subprocess
 
 lua_exe = '~/src/luajit-2.0/src/luajit'
@@ -109,13 +110,19 @@ class PyLua(ast.NodeVisitor):
         self.indent()
         self.emit('end\n')
 
+    ident_re = re.compile(r'^[A-Za-z_][\w_]*$')
+
     def visit_Dict(self, node):
         self.emit('{ ')
         for k,v in zip(node.keys, node.values):
-            # TODO: optimize pretty keys
-            self.emit('[')
-            self.visit(k)
-            self.emit(']=')
+            if isinstance(k, ast.Str) and self.ident_re.match(k.s):
+                # optimize pretty keys
+                self.emit(k.s)
+            else:
+                self.emit('[')
+                self.visit(k)
+                self.emit(']')
+            self.emit('=')
             self.visit(v)
             self.emit(', ')
         self.emit('}')
