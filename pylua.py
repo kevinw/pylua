@@ -146,6 +146,40 @@ class PyLua(ast.NodeVisitor):
             self.emit(r"'\n'")
         self.emit(')\n')
 
+    def visit_TryExcept(self, node):
+        self.indent()
+        self.emit('-- PYLUA.FIXME: TRY:\n')
+
+        self.push_scope()
+        self.visit_all(node.body)
+        self.pop_scope()
+
+        for x in node.handlers:
+            if isinstance(x, ast.ExceptHandler):
+                self.indent()
+                self.emit('-- PYLUA.FIXME: EXCEPT ')
+                self.visit(x.type)
+                if x.name:
+                    self.emit(' ')
+                    self.visit(x.name)
+                self.emit(':\n')
+
+                self.push_scope()
+                self.visit_all(x.body)
+                self.pop_scope()
+            else:
+                self.indent()
+                self.emit('-- PYLUA.FIXME: '+x.__class__.__name__)
+                self.eol()
+
+        if len(node.orelse)>0:
+            self.indent()
+            self.emit('-- PYLUA.FIXME: FINALLY:\n')
+
+            self.push_scope()
+            self.visit_all(node.orelse)
+            self.pop_scope()
+
     def visit_BinOp(self, node):
         if isinstance(node.op, ast.Pow):
             self.emit('math.pow(')
@@ -308,7 +342,7 @@ class PyLua(ast.NodeVisitor):
                 self.indent()
                 self.emit(';\n')
             else:
-                self.emit('-- FIXME ast.'+x.__class__.__name__)
+                self.emit('-- PYLUA.FIXME ast.'+x.__class__.__name__)
                 self.eol()
         self.pop_scope()
 
