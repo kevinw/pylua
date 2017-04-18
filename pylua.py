@@ -423,21 +423,34 @@ class PyLua(ast.NodeVisitor):
 
     def visit_For(self, node):
         self.indent()
-        if node.target and node.iter:
+        if node.target and node.iter and \
+                isinstance(node.iter, ast.Call) and \
+                isinstance(node.iter.func, ast.Attribute) and \
+                node.iter.func.attr == 'items':
+            # Python: for k,v in dict.items():
+            self.emit('for ')
+            if isinstance(node.target, ast.Tuple):
+                self.visit_all_sep(node.target.elts, ', ')
+            else:
+                self.visit(node.target)
+            self.emit(' in pairs(')
+            self.visit(node.iter.func.value)
+            self.emit(') do\n')
+        elif node.target and node.iter:
             self.emit('for _, ')
             self.visit(node.target)
             self.emit(' in ipairs(')
             self.visit(node.iter)
             self.emit(') do\n')
-
-            self.push_scope()
-            self.visit_all(node.body)
-            self.pop_scope()
-
-            self.indent()
-            self.emit('end\n')
         else:
-            self.emit('FOR ... ?\n')
+            self.emit('PYLUA.FOR ... ?\n')
+
+        self.push_scope()
+        self.visit_all(node.body)
+        self.pop_scope()
+
+        self.indent()
+        self.emit('end\n')
 
     def visit_Continue(self, node):
         # FIXME LATER
