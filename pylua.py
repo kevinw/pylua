@@ -154,9 +154,9 @@ class PyLua(ast.NodeVisitor):
         self.indent()
         self.emit('-- PYLUA.FIXME: TRY:\n')
 
-        self.push_scope()
+        #self.push_scope()
         self.visit_all(node.body)
-        self.pop_scope()
+        #self.pop_scope()
 
         for x in node.handlers:
             if isinstance(x, ast.ExceptHandler):
@@ -219,7 +219,9 @@ class PyLua(ast.NodeVisitor):
 
     def visit_UnaryOp(self, node):
         self.visit(node.op)
+        self.emit_paren_maybe(node, node.operand, '(')
         self.visit(node.operand)
+        self.emit_paren_maybe(node, node.operand, ')')
 
     def visit_Not(self, node):
         self.emit(' not ')
@@ -540,6 +542,11 @@ class PyLua(ast.NodeVisitor):
             self.visit_all_sep(node.comparators, ', ')
             self.emit(')')
         elif len(node.ops)==1 and isinstance(node.ops[0], ast.IsNot):
+            if len(node.comparators)==1 and isinstance(node.comparators[0], ast.Name) and \
+                    node.comparators[0].id == 'None':
+                self.visit(node.left)
+                self.emit(' ~= nil')
+                return
             self.emit('PYLUA.op_is_not(')
             self.visit(node.left)
             self.emit(', ')
@@ -612,6 +619,11 @@ class PyLua(ast.NodeVisitor):
         if isinstance(parent, ast.UnaryOp) and isinstance(parent.op, ast.Not) and \
                 isinstance(child, ast.BoolOp):
             self.emit(text)
+            return
+        if isinstance(parent, ast.UnaryOp) and isinstance(parent.op, ast.USub) and \
+                isinstance(child, ast.BinOp) and \
+                (isinstance(child.op, ast.Add) or isinstance(child.op, ast.Sub)):
+            self.emit(text)  # -(..+..)   -(..-..)
             return
 
     def indent(self):
