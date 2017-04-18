@@ -281,9 +281,9 @@ class PyLua(ast.NodeVisitor):
             self.emit('[ ? ]')
 
     def visit_Tuple(self, node):
-        #self.emit('{')
+        self.emit('{')
         self.visit_all_sep(node.elts, ', ')
-        #self.emit('}')
+        self.emit('}')
 
     def visit_Name(self, node):
         if node.id == 'None':
@@ -297,12 +297,19 @@ class PyLua(ast.NodeVisitor):
 
     def visit_Assign(self, node):
         self.indent()
-        for x in node.targets:
-            self.visit(x)
-            self.emit(' ')
-        self.emit('= ')
-        self.visit(node.value)
-        self.eol()
+        if len(node.targets)==1 and isinstance(node.targets[0], ast.Tuple):
+            self.visit_all_sep(node.targets[0].elts, ', ')
+            self.emit(' = table.unpack(')
+            self.visit(node.value)
+            self.emit(')\n')
+        else:
+            # TODO: can there be >1 targets? what's difference with 1 target, a Tuple?
+            for x in node.targets:
+                self.visit(x)
+                self.emit(' ')
+            self.emit('= ')
+            self.visit(node.value)
+            self.eol()
 
     def visit_AugAssign(self, node):
         self.indent()
