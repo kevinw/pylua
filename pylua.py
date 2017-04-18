@@ -242,6 +242,14 @@ class PyLua(ast.NodeVisitor):
             self.visit_all_sep(node.args, ', ')
             self.emit(')')
             return
+        if isinstance(node.func, ast.Attribute) and node.func.attr == 'keys':
+            self.emit('PYLUA.keys(')
+            self.visit(node.func.value)
+            if len(node.args)>0:
+                self.emit(', ')
+                self.visit_all_sep(node.args, ', ')
+            self.emit(')')
+            return
         self.visit(node.func)
         self.emit('(')
         first = True
