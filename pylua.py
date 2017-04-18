@@ -235,6 +235,13 @@ class PyLua(ast.NodeVisitor):
         self.visit(node.orelse)
 
     def visit_Call(self, node):
+        if isinstance(node.func, ast.Attribute) and node.func.attr == 'append':
+            self.emit('table.insert(')
+            self.visit(node.func.value)
+            self.emit(', ')
+            self.visit_all_sep(node.args, ', ')
+            self.emit(')')
+            return
         self.visit(node.func)
         self.emit('(')
         first = True
@@ -250,6 +257,7 @@ class PyLua(ast.NodeVisitor):
                 self.emit(', ')
             self.visit_all_sep(node.args, ', ')
         self.emit(')')
+
     def visit_keyword(self, node):
         self.emit(node.arg)
         self.emit('=')
