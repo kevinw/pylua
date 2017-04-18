@@ -529,6 +529,11 @@ class PyLua(ast.NodeVisitor):
             self.visit_all_sep(node.comparators, ', ')
             self.emit(')')
         elif len(node.ops)==1 and isinstance(node.ops[0], ast.Is):
+            if len(node.comparators)==1 and isinstance(node.comparators[0], ast.Name) and \
+                    node.comparators[0].id == 'None':
+                self.visit(node.left)
+                self.emit(' == nil')
+                return
             self.emit('PYLUA.op_is(')
             self.visit(node.left)
             self.emit(', ')
