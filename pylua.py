@@ -252,6 +252,16 @@ class PyLua(ast.NodeVisitor):
                 self.visit_all_sep(node.args, ', ')
             self.emit(')')
             return
+        if isinstance(node.func, ast.Attribute) and node.func.attr == 'get' and \
+                len(node.args)>=1 and len(node.args)<=2:
+            self.visit(node.func.value)
+            self.emit('[')
+            self.visit(node.args[0])
+            self.emit(']')
+            if len(node.args)==2:
+                self.emit(' or ')
+                self.visit(node.args[1])
+            return
         self.visit(node.func)
         self.emit('(')
         first = True
@@ -507,6 +517,14 @@ class PyLua(ast.NodeVisitor):
         self.indent()
         self.emit('end\n')
         self.env_pop()
+
+        if len(node.orelse)>0:
+            self.indent()
+            self.emit('-- PYLUA.FIXME: else:\n')
+
+            self.push_scope()
+            self.visit_all(node.orelse)
+            self.pop_scope()
 
     def visit_Continue(self, node):
         # FIXME LATER
