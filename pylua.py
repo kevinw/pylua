@@ -202,9 +202,9 @@ class PyLua(ast.NodeVisitor):
             self.visit(node.left)
             self.emit_paren_maybe(node, node.left, ')')
             self.visit(node.op)
-            self.emit_paren_maybe(node, node.right, '(')
+            self.emit_paren_maybe(node, node.right, '(', True)
             self.visit(node.right)
-            self.emit_paren_maybe(node, node.right, ')')
+            self.emit_paren_maybe(node, node.right, ')', True)
 
     def visit_BoolOp(self, node):
         first = True
@@ -591,18 +591,23 @@ class PyLua(ast.NodeVisitor):
     def pop_scope(self):
         self.indentation -= 1
 
-    def emit_paren_maybe(self, parent, child, text):
+    def emit_paren_maybe(self, parent, child, text, right=False):
         if isinstance(parent, ast.BinOp) and isinstance(child, ast.BinOp) and \
                 (isinstance(parent.op, ast.Mult) or isinstance(parent.op, ast.Div)) and \
                 (isinstance(child.op, ast.Add) or isinstance(child.op, ast.Sub)):
-            self.emit(text)
+            self.emit(text)  # (..+..) / (..-..)   (..+..) * (..-..)
+            return
+        if right and isinstance(parent, ast.BinOp) and isinstance(child, ast.BinOp) and \
+                isinstance(parent.op, ast.Sub) and \
+                (isinstance(child.op, ast.Sub) or isinstance(child.op, ast.Add)):
+            self.emit(text)  # .. - (..+..)   .. - (..-..)
             return
         if isinstance(parent, ast.BinOp) and isinstance(child, ast.BoolOp):
             self.emit(text)
             return
         if isinstance(parent, ast.BoolOp) and isinstance(child, ast.BoolOp) and \
                 isinstance(parent.op, ast.And) and isinstance(child.op, ast.Or):
-            self.emit(text)
+            self.emit(text)  # (..or..) and ...
             return
         if isinstance(parent, ast.UnaryOp) and isinstance(parent.op, ast.Not) and \
                 isinstance(child, ast.BoolOp):
