@@ -46,6 +46,7 @@ class PyLua(ast.NodeVisitor):
     def __init__(self):
         self.stream = cStringIO.StringIO()
         self.indentation = 0
+        self.envs = [{}]
 
     def visit_all(self, nodes):
         for node in nodes:
@@ -97,6 +98,8 @@ class PyLua(ast.NodeVisitor):
         v.update(**vars(node))
 
         self.emit('\n')
+
+        self.env_push()
         self.indent()
         self.emit('%(name)s = function(' % v)
         self.visit(node.args)
@@ -109,6 +112,7 @@ class PyLua(ast.NodeVisitor):
         #self.emit('\n')
         self.indent()
         self.emit('end\n')
+        self.env_pop()
 
     ident_re = re.compile(r'^[A-Za-z_][\w_]*$')
 
@@ -294,20 +298,35 @@ class PyLua(ast.NodeVisitor):
             self.emit('false')
         else:
             self.emit(node.id)
+            self.env_add(node.id)
 
     def visit_Assign(self, node):
         self.indent()
         if len(node.targets)==1 and isinstance(node.targets[0], ast.Tuple):
+            newlocals = []
+            for x in node.targets[0].elts:
+                if isinstance(x, ast.Name) and not self.env_has(x.id):
+                    newlocals.append(x.id)
+            if len(newlocals) == len(node.targets[0].elts):
+                self.emit('local ')
+            elif len(newlocals)>0:
+                self.emit('local ')
+                self.emit(', '.join(newlocals))
+                self.eol()
+                self.indent()
             self.visit_all_sep(node.targets[0].elts, ', ')
             self.emit(' = table.unpack(')
             self.visit(node.value)
             self.emit(')\n')
-        else:
+        elif len(node.targets) > 1:
             # TODO: can there be >1 targets? what's difference with 1 target, a Tuple?
-            for x in node.targets:
-                self.visit(x)
-                self.emit(' ')
-            self.emit('= ')
+            self.emit('-- PYLUA.FIXME Assign\n')
+        else:
+            x = node.targets[0]
+            if isinstance(x, ast.Name) and not self.env_has(x.id):
+                self.emit('local ')
+            self.visit(x)
+            self.emit(' = ')
             self.visit(node.value)
             self.eol()
 
@@ -421,7 +440,25 @@ class PyLua(ast.NodeVisitor):
         self.indent()
         self.emit('end\n')
 
+    def visit_While(self, node):
+        self.indent()
+        self.emit('while ')
+        self.visit(node.test)
+        self.emit(' do\n')
+
+        self.push_scope()
+        self.visit_all(node.body)
+        self.pop_scope()
+
+        self.indent()
+        self.emit('end\n')
+
+    def visit_Break(self, node):
+        self.indent()
+        self.emit('break\n')
+
     def visit_For(self, node):
+        self.env_push()  # TODO: is this correct?
         self.indent()
         if node.target and node.iter and \
                 isinstance(node.iter, ast.Call) and \
@@ -451,6 +488,7 @@ class PyLua(ast.NodeVisitor):
 
         self.indent()
         self.emit('end\n')
+        self.env_pop()
 
     def visit_Continue(self, node):
         # FIXME LATER
@@ -557,6 +595,18 @@ class PyLua(ast.NodeVisitor):
 
     def emit(self, val):
         self.stream.write(val)
+
+    def env_push(self):
+        self.envs.append({})
+    def env_pop(self):
+        self.envs.pop()
+    def env_add(self, name):
+        self.envs[len(self.envs)-1][name] = True
+    def env_has(self, name):
+        for env in self.envs:
+            if name in env:
+                return True
+        return False
 
 _dump_ast=dump
 def run_file(filename, dump=False):
