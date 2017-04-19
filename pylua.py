@@ -106,6 +106,16 @@ class PyLua(ast.NodeVisitor):
         self.emit(')\n')
 
         self.push_scope()
+        default0 = len(node.args.args)-len(node.args.defaults)
+        for i, default in enumerate(node.args.defaults):
+            arg = node.args.args[default0+i]
+            self.indent()
+            self.visit(arg)
+            self.emit(' = ')
+            self.visit(arg)
+            self.emit(' or ')
+            self.visit(default)
+            self.eol()
         self.visit_all(node.body)
         self.pop_scope()
 
@@ -256,7 +266,7 @@ class PyLua(ast.NodeVisitor):
         if isinstance(node.func, ast.Attribute) and \
                 node.func.attr in ['keys', 'replace', 'split', 'update', 'copy',
                                    'endswith', 'find', 'lower', 'setdefault', 'strip',
-                                   'startswith']:
+                                   'startswith', 'join']:
             self.emit('PYLUA.')
             self.emit(node.func.attr)
             self.emit('(')
@@ -301,7 +311,8 @@ class PyLua(ast.NodeVisitor):
             self.visit(node.args[0])
             if not noparen: self.emit(')')
             return
-        stdfuncs = {'max':'math.max', 'min':'math.min', 'ord':'PYLUA.ord', 'str':'tostring'}
+        stdfuncs = {'max':'math.max', 'min':'math.min', 'ord':'PYLUA.ord', 'str':'tostring',
+                    'map':'PYLUA.map'}
         if isinstance(node.func, ast.Name) and node.func.id in stdfuncs.keys():
             self.emit(stdfuncs[node.func.id])
             self.emit('(')
