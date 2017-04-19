@@ -108,6 +108,8 @@ class PyLua(ast.NodeVisitor):
         self.push_scope()
         default0 = len(node.args.args)-len(node.args.defaults)
         for i, default in enumerate(node.args.defaults):
+            if isinstance(default, ast.Name) and default.id=='None':
+                continue
             arg = node.args.args[default0+i]
             self.indent()
             self.visit(arg)
