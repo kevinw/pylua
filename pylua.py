@@ -191,6 +191,15 @@ class PyLua(ast.NodeVisitor):
             self.emit(', ')
             self.visit(node.right)
             self.emit(')')
+        elif isinstance(node.op, ast.Mod) and isinstance(node.left, ast.Str):
+            self.emit('string.format(')
+            self.visit(node.left)
+            self.emit(', ')
+            if isinstance(node.right, ast.Tuple):
+                self.visit_all_sep(node.right.elts, ', ')
+            else:
+                self.visit(node.right)
+            self.emit(')')
         elif isinstance(node.op, ast.Mod):
             self.emit('PYLUA.mod(')
             self.visit(node.left)
@@ -244,8 +253,13 @@ class PyLua(ast.NodeVisitor):
             self.visit_all_sep(node.args, ', ')
             self.emit(')')
             return
-        if isinstance(node.func, ast.Attribute) and node.func.attr == 'keys':
-            self.emit('PYLUA.keys(')
+        if isinstance(node.func, ast.Attribute) and \
+                node.func.attr in ['keys', 'replace', 'split', 'update', 'copy',
+                                   'endswith', 'find', 'lower', 'setdefault', 'strip',
+                                   'startswith']:
+            self.emit('PYLUA.')
+            self.emit(node.func.attr)
+            self.emit('(')
             self.visit(node.func.value)
             if len(node.args)>0:
                 self.emit(', ')
@@ -261,6 +275,38 @@ class PyLua(ast.NodeVisitor):
             if len(node.args)==2:
                 self.emit(' or ')
                 self.visit(node.args[1])
+            return
+        if isinstance(node.func, ast.Attribute) and node.func.attr == 'join' and \
+                isinstance(node.func.value, ast.Str) and len(node.args)==1:
+            arg = node.args[0]
+            if isinstance(arg, ast.Call) and isinstance(arg.func, ast.Attribute) and \
+                    arg.func.attr == 'split' and len(arg.args)==0:
+                # ' '.join(sss.split())
+                self.emit('string.gsub(')
+                self.visit(arg.func.value)
+                self.emit(", '%s+', ")
+                self.visit(node.func.value)
+                self.emit(')')
+                return
+            self.emit('table.concat(')
+            self.visit(node.args[0])
+            self.emit(', ')
+            self.visit(node.func.value)
+            self.emit(')')
+            return
+        if isinstance(node.func, ast.Name) and node.func.id == 'len' and len(node.args)==1:
+            noparen = isinstance(node.args[0], ast.Attribute) or isinstance(node.args[0], ast.Name)
+            self.emit('#')
+            if not noparen: self.emit('(')
+            self.visit(node.args[0])
+            if not noparen: self.emit(')')
+            return
+        stdfuncs = {'max':'math.max', 'min':'math.min', 'ord':'PYLUA.ord', 'str':'tostring'}
+        if isinstance(node.func, ast.Name) and node.func.id in stdfuncs.keys():
+            self.emit(stdfuncs[node.func.id])
+            self.emit('(')
+            self.visit_all_sep(node.args, ', ')
+            self.emit(')')
             return
         self.visit(node.func)
         self.emit('(')
@@ -501,6 +547,8 @@ class PyLua(ast.NodeVisitor):
             self.emit(' in pairs(')
             self.visit(node.iter.func.value)
             self.emit(') do\n')
+        # TODO(akavel): for c in range(len(tab)):  --> for c = 1,#tab:
+        # TODO(akavel): for c in range(a, b):      --> for c = a,b-1: ???
         elif node.target and node.iter:
             self.emit('for _, ')
             self.visit(node.target)
@@ -594,12 +642,7 @@ class PyLua(ast.NodeVisitor):
         self.emit(' or ')
 
     def visit_Attribute(self, node):
-        if node.attr in ['join']:
-            self.emit('PYLUA.str_maybe(')
-            self.visit(node.value)
-            self.emit(')')
-        else:
-            self.visit(node.value)
+        self.visit(node.value)
         self.emit('.')
         self.emit(node.attr)
 
