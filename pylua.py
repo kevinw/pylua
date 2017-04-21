@@ -278,6 +278,24 @@ class PyLua(ast.NodeVisitor):
             self.visit_all_sep(node.args, ', ')
             self.emit(')')
             return
+        if isinstance(node.func, ast.Attribute) and node.func.attr == 'join' and \
+                isinstance(node.func.value, ast.Str) and len(node.args)==1:
+            arg = node.args[0]
+            if isinstance(arg, ast.Call) and isinstance(arg.func, ast.Attribute) and \
+                    arg.func.attr == 'split' and len(arg.args)==0:
+                # ' '.join(sss.split())
+                self.emit('string.gsub(')
+                self.visit(arg.func.value)
+                self.emit(", '%s+', ")
+                self.visit(node.func.value)
+                self.emit(')')
+                return
+            self.emit('table.concat(')
+            self.visit(node.args[0])
+            self.emit(', ')
+            self.visit(node.func.value)
+            self.emit(')')
+            return
         if isinstance(node.func, ast.Attribute) and \
                 node.func.attr in ['keys', 'replace', 'split', 'update', 'copy',
                                    'endswith', 'find', 'lower', 'setdefault', 'strip',
@@ -299,29 +317,13 @@ class PyLua(ast.NodeVisitor):
                 len(node.args)>=1 and len(node.args)<=2:
             self.visit(node.func.value)
             self.emit('[')
+            if isinstance(node.args[0], ast.Tuple):
+                self.emit('PYLUA.keytuple')
             self.visit(node.args[0])
             self.emit(']')
             if len(node.args)==2:
                 self.emit(' or ')
                 self.visit(node.args[1])
-            return
-        if isinstance(node.func, ast.Attribute) and node.func.attr == 'join' and \
-                isinstance(node.func.value, ast.Str) and len(node.args)==1:
-            arg = node.args[0]
-            if isinstance(arg, ast.Call) and isinstance(arg.func, ast.Attribute) and \
-                    arg.func.attr == 'split' and len(arg.args)==0:
-                # ' '.join(sss.split())
-                self.emit('string.gsub(')
-                self.visit(arg.func.value)
-                self.emit(", '%s+', ")
-                self.visit(node.func.value)
-                self.emit(')')
-                return
-            self.emit('table.concat(')
-            self.visit(node.args[0])
-            self.emit(', ')
-            self.visit(node.func.value)
-            self.emit(')')
             return
         if isinstance(node.func, ast.Name) and node.func.id == 'len' and len(node.args)==1:
             noparen = isinstance(node.args[0], ast.Attribute) or isinstance(node.args[0], ast.Name)
@@ -376,6 +378,9 @@ class PyLua(ast.NodeVisitor):
             self.emit('[')
             if isinstance(node.slice.value, ast.Num):
                 self.emit('%d' % (node.slice.value.n + 1))
+            elif isinstance(node.slice.value, ast.Tuple):
+                self.emit('PYLUA.keytuple')
+                self.visit(node.slice)
             else:
                 self.visit(node.slice)
             self.emit(']')
@@ -445,8 +450,11 @@ class PyLua(ast.NodeVisitor):
         self.visit(node.target)
         self.emit(' = ')
         self.visit(node.target)
+        fakeParent = ast.BinOp(node.value, node.op, node.value)
         self.visit(node.op)
+        self.emit_paren_maybe(fakeParent, node.value, '(', True)
         self.visit(node.value)
+        self.emit_paren_maybe(fakeParent, node.value, ')', True)
         self.eol()
 
     def visit_Expr(self, node):
@@ -677,6 +685,14 @@ class PyLua(ast.NodeVisitor):
             self.visit_all_sep(node.comparators, ', ')
             self.emit(')')
         elif len(node.ops)==1 and isinstance(node.ops[0], ast.In):
+            if len(node.comparators)==1 and isinstance(node.comparators[0], ast.Attribute) and \
+                    node.comparators[0].attr == 'keys':
+                # x in y.keys() --> y[x]
+                self.visit(node.comparators[0])
+                self.emit('[')
+                self.visit(node.left)
+                self.emit(']')
+                return
             self.emit('PYLUA.op_in(')
             self.visit(node.left)
             self.emit(', ')
