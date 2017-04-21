@@ -47,6 +47,7 @@ class PyLua(ast.NodeVisitor):
         self.stream = cStringIO.StringIO()
         self.indentation = 0
         self.envs = [{}]
+        self.wantcontinue = set()
 
     def visit_all(self, nodes):
         for node in nodes:
@@ -314,7 +315,7 @@ class PyLua(ast.NodeVisitor):
             if not noparen: self.emit(')')
             return
         stdfuncs = {'max':'math.max', 'min':'math.min', 'ord':'PYLUA.ord', 'str':'tostring',
-                    'map':'PYLUA.map'}
+                    'map':'PYLUA.map', 'sum':'PYLUA.sum'}
         if isinstance(node.func, ast.Name) and node.func.id in stdfuncs.keys():
             self.emit(stdfuncs[node.func.id])
             self.emit('(')
@@ -535,6 +536,11 @@ class PyLua(ast.NodeVisitor):
 
         self.push_scope()
         self.visit_all(node.body)
+        wantcontinue = {i for i in self.wantcontinue if i>=self.indentation}
+        if len(wantcontinue) > 0:
+            self.indent()
+            self.emit('::continue::\n')
+            self.wantcontinue -= wantcontinue
         self.pop_scope()
 
         self.indent()
@@ -560,8 +566,8 @@ class PyLua(ast.NodeVisitor):
             self.emit(' in pairs(')
             self.visit(node.iter.func.value)
             self.emit(') do\n')
-        # TODO(akavel): for c in range(len(tab)):  --> for c = 1,#tab:
-        # TODO(akavel): for c in range(a, b):      --> for c = a,b-1: ???
+        # TODO: for c in range(len(tab)):  --> for c = 1,#tab:
+        # TODO: for c in range(a, b):      --> for c = a,b-1: ???
         elif node.target and node.iter:
             self.emit('for _, ')
             self.visit(node.target)
@@ -573,6 +579,11 @@ class PyLua(ast.NodeVisitor):
 
         self.push_scope()
         self.visit_all(node.body)
+        wantcontinue = {i for i in self.wantcontinue if i>=self.indentation}
+        if len(wantcontinue) > 0:
+            self.indent()
+            self.emit('::continue::\n')
+            self.wantcontinue -= wantcontinue
         self.pop_scope()
 
         self.indent()
@@ -588,13 +599,32 @@ class PyLua(ast.NodeVisitor):
             self.pop_scope()
 
     def visit_Continue(self, node):
-        # FIXME LATER
         self.indent()
         self.emit('goto continue\n')
+        # FIXME: very rough heuristic
+        self.wantcontinue.add(self.indentation-1)
 
     def visit_ListComp(self, node):
-        # FIXME LATER
-        self.emit('PYLUA.COMPREHENSION()')
+        if len(node.generators)>1 or len(node.generators[0].ifs)>1:
+            self.emit('PYLUA.COMPREHENSION()')
+            return
+        gen = node.generators[0]
+        self.emit('PYLUA.collect(')
+        self.visit(gen.iter)
+        self.emit(', function(')
+        if not isinstance(gen.target, ast.Name):
+            self.emit('--[[PYLUA.FIXME: ListComp]] ')
+        self.visit(gen.target)
+        self.emit(') ')
+        if len(gen.ifs) > 0:
+            self.emit('if ')
+            self.visit(gen.ifs[0])
+            self.emit(' then ')
+        self.emit('return ')
+        self.visit(node.elt)
+        if len(gen.ifs) > 0:
+            self.emit(' end')
+        self.emit(' end)')
 
     def visit_Compare(self, node):
         if len(node.ops)==1 and isinstance(node.ops[0], ast.NotIn):
