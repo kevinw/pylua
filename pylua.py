@@ -579,6 +579,7 @@ class PyLua(ast.NodeVisitor):
     def visit_For(self, node):
         self.env_push()  # TODO: is this correct?
         self.indent()
+        ituple = None
         if node.target and node.iter and \
                 isinstance(node.iter, ast.Call) and \
                 isinstance(node.iter.func, ast.Attribute) and \
@@ -596,7 +597,11 @@ class PyLua(ast.NodeVisitor):
         # TODO: for c in range(a, b):      --> for c = a,b-1: ???
         elif node.target and node.iter:
             self.emit('for _, ')
-            self.visit(node.target)
+            if isinstance(node.target, ast.Tuple):
+                ituple = node.target
+                self.emit('PYLUA_x')
+            else:
+                self.visit(node.target)
             self.emit(' in ipairs(')
             self.visit(node.iter)
             self.emit(') do\n')
@@ -604,6 +609,11 @@ class PyLua(ast.NodeVisitor):
             self.emit('PYLUA.FOR ... ?\n')
 
         self.push_scope()
+        if ituple:
+            self.indent()
+            self.emit('local ')
+            self.visit_all_sep(ituple.elts, ', ')
+            self.emit(' = table.unpack(PYLUA_x)\n')
         self.visit_all(node.body)
         wantcontinue = {i for i in self.wantcontinue if i>=self.indentation}
         if len(wantcontinue) > 0:
