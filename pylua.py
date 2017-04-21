@@ -46,8 +46,12 @@ class PyLua(ast.NodeVisitor):
     def __init__(self):
         self.stream = cStringIO.StringIO()
         self.indentation = 0
+        # variable name scopes (environments); FIXME: leaky heuristic
         self.envs = [{}]
+        # indentation levels where '::continue::' is wanted; FIXME: leaky heuristic
         self.wantcontinue = set()
+        # packages, and other stuff which doesn't require ':' calling convention
+        self.nocolon = set()
 
     def visit_all(self, nodes):
         for node in nodes:
@@ -269,11 +273,15 @@ class PyLua(ast.NodeVisitor):
         if isinstance(node.func, ast.Attribute) and \
                 node.func.attr in ['keys', 'replace', 'split', 'update', 'copy',
                                    'endswith', 'find', 'lower', 'setdefault', 'strip',
-                                   'startswith', 'join']:
+                                   'startswith', 'join', 'items', 'sort']:
             self.emit('PYLUA.')
             self.emit(node.func.attr)
             self.emit('(')
             self.visit(node.func.value)
+            if len(node.keywords)>0:
+                self.emit(', PYLUA.keywords{')
+                self.visit_all_sep(node.keywords, ', ')
+                self.emit('}')
             if len(node.args)>0:
                 self.emit(', ')
                 self.visit_all_sep(node.args, ', ')
@@ -315,14 +323,20 @@ class PyLua(ast.NodeVisitor):
             if not noparen: self.emit(')')
             return
         stdfuncs = {'max':'math.max', 'min':'math.min', 'ord':'PYLUA.ord', 'str':'tostring',
-                    'map':'PYLUA.map', 'sum':'PYLUA.sum'}
+                    'map':'PYLUA.map', 'sum':'PYLUA.sum', 'open':'PYLUA.open'}
         if isinstance(node.func, ast.Name) and node.func.id in stdfuncs.keys():
             self.emit(stdfuncs[node.func.id])
             self.emit('(')
             self.visit_all_sep(node.args, ', ')
             self.emit(')')
             return
-        self.visit(node.func)
+        if isinstance(node.func, ast.Attribute) and \
+                ((not isinstance(node.func.value, ast.Name)) or node.func.value.id not in self.nocolon):
+            self.visit(node.func.value)
+            self.emit(':')
+            self.emit(node.func.attr)
+        else:
+            self.visit(node.func)
         self.emit('(')
         first = True
         if len(node.keywords)>0:
@@ -446,8 +460,10 @@ class PyLua(ast.NodeVisitor):
                 self.emit('local ')
                 if x.asname:
                     self.emit(x.asname)
+                    self.nocolon.add(x.asname)
                 else:
                     self.emit(x.name)
+                    self.nocolon.add(x.name)
                 self.emit(" = require('")
                 self.emit(x.name)
                 self.emit("')\n")
@@ -461,8 +477,10 @@ class PyLua(ast.NodeVisitor):
                 self.emit('local ')
                 if x.asname:
                     self.emit(x.asname)
+                    self.nocolon.add(x.asname)
                 else:
                     self.emit(x.name)
+                    self.nocolon.add(x.name)
                 self.emit(" = require('")
                 self.emit(node.module)
                 self.emit("').")
