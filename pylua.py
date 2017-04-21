@@ -167,7 +167,7 @@ class PyLua(ast.NodeVisitor):
 
     def visit_Print(self, node):
         self.indent()
-        self.emit('io.write(')
+        self.emit('PYLUA.print(')
         self.visit_all_sep(node.values, ', ')
         if node.nl:
             if len(node.values)>0:
@@ -524,6 +524,13 @@ class PyLua(ast.NodeVisitor):
         self.indent()
         self.emit('error(')
         self.visit(node.type)
+        if node.inst is not None:  # TODO: is this correct condition?
+            self.emit('(')
+            if isinstance(node.inst, ast.Tuple):  # TODO: ok? or not?
+                self.visit_all_sep(node.inst.elts, ', ')
+            else:
+                self.visit(node.inst)
+            self.emit(')')
         self.emit(')\n')
 
     def visit_If(self, node):
