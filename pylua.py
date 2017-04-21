@@ -131,6 +131,14 @@ class PyLua(ast.NodeVisitor):
         self.emit('end\n')
         self.env_pop()
 
+    def visit_Lambda(self, node):
+        self.emit('function(')
+        # TODO: instead of node.args.args, create and use common method visit_arguments ?
+        self.visit_all_sep(node.args.args, ', ')
+        self.emit(') return ')
+        self.visit(node.body)
+        self.emit(' end')
+
     ident_re = re.compile(r'^[A-Za-z_][\w_]*$')
 
     def visit_Dict(self, node):
