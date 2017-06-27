@@ -609,6 +609,7 @@ class PyLua(ast.NodeVisitor):
             self.indent()
             self.emit('::continue::\n')
             self.wantcontinue -= wantcontinue
+            assert 0, "continue is not in Lua."
         self.pop_scope()
 
         self.indent()
@@ -662,6 +663,7 @@ class PyLua(ast.NodeVisitor):
             self.indent()
             self.emit('::continue::\n')
             self.wantcontinue -= wantcontinue
+            assert 0, "continue is not in Lua."
         self.pop_scope()
 
         self.indent()
@@ -681,6 +683,7 @@ class PyLua(ast.NodeVisitor):
         self.emit('goto continue\n')
         # FIXME: very rough heuristic
         self.wantcontinue.add(self.indentation-1)
+        assert 0, "Continue is non-existent in Lua!"
 
     def visit_ListComp(self, node):
         if len(node.generators)>1 or len(node.generators[0].ifs)>1:
