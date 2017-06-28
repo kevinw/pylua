@@ -1,4 +1,4 @@
-import cStringIO
+import io
 import sys
 import os
 import ast
@@ -44,7 +44,7 @@ def dump(node, annotate_fields=True, include_attributes=False, whitespace=False)
 
 class PyLua(ast.NodeVisitor):
     def __init__(self):
-        self.stream = cStringIO.StringIO()
+        self.stream = io.StringIO()
         self.indentation = 0
         # variable name scopes (environments); FIXME: leaky heuristic
         self.envs = [{}]
@@ -161,6 +161,9 @@ class PyLua(ast.NodeVisitor):
         self.visit_all_sep(node.elts, ', ')
         self.emit('}')
 
+    def visit_arg(self, node):
+        self.emit(node.arg)
+
     def visit_arguments(self, node):
         self.visit_all_sep(node.args, ', ')
         # FIXME: kwargs, ...
@@ -226,11 +229,21 @@ class PyLua(ast.NodeVisitor):
                 self.visit(node.right)
             self.emit(')')
         elif isinstance(node.op, ast.Mod):
-            self.emit('PYLUA.mod(')
+            self.emit('(')
             self.visit(node.left)
-            self.emit(', ')
+            self.emit('%')
             self.visit(node.right)
             self.emit(')')
+        elif isinstance(node.op, ast.FloorDiv):
+            self.emit('(')
+            self.visit(node.left)
+            self.emit('//')
+            self.visit(node.right)
+            self.emit(')')
+        elif isinstance(node.op, ast.Add) and isinstance(node.left, ast.Str):
+            self.visit(node.left)
+            self.emit(' .. ')
+            self.visit(node.right)
         else:
             self.emit_paren_maybe(node, node.left, '(')
             self.visit(node.left)
@@ -297,6 +310,21 @@ class PyLua(ast.NodeVisitor):
             self.emit(')')
             return
         if isinstance(node.func, ast.Attribute) and \
+                node.func.attr == "lower":
+            self.emit('string.')
+            self.emit(node.func.attr)
+            self.emit('(')
+            self.visit(node.func.value)
+            if len(node.keywords)>0:
+                self.emit(', PYLUA.keywords{')
+                self.visit_all_sep(node.keywords, ', ')
+                self.emit('}')
+            if len(node.args)>0:
+                self.emit(', ')
+                self.visit_all_sep(node.args, ', ')
+            self.emit(')')
+            return
+        if isinstance(node.func, ast.Attribute) and \
                 node.func.attr in ['keys', 'replace', 'split', 'update', 'copy',
                                    'endswith', 'find', 'lower', 'setdefault', 'strip',
                                    'startswith', 'join', 'items', 'sort']:
@@ -334,7 +362,7 @@ class PyLua(ast.NodeVisitor):
             return
         stdfuncs = {'max':'math.max', 'min':'math.min', 'ord':'PYLUA.ord', 'str':'tostring',
                     'map':'PYLUA.map', 'sum':'PYLUA.sum', 'open':'PYLUA.open'}
-        if isinstance(node.func, ast.Name) and node.func.id in stdfuncs.keys():
+        if isinstance(node.func, ast.Name) and node.func.id in list(stdfuncs.keys()):
             self.emit(stdfuncs[node.func.id])
             self.emit('(')
             self.visit_all_sep(node.args, ', ')
@@ -343,7 +371,7 @@ class PyLua(ast.NodeVisitor):
         if isinstance(node.func, ast.Attribute) and \
                 ((not isinstance(node.func.value, ast.Name)) or node.func.value.id not in self.nocolon):
             self.visit(node.func.value)
-            self.emit(':')
+            self.emit('.')
             self.emit(node.func.attr)
         else:
             self.visit(node.func)
@@ -405,15 +433,8 @@ class PyLua(ast.NodeVisitor):
         self.emit('}')
 
     def visit_Name(self, node):
-        if node.id == 'None':
-            self.emit('nil')
-        elif node.id == 'True':
-            self.emit('true')
-        elif node.id == 'False':
-            self.emit('false')
-        else:
-            self.emit(node.id)
-            self.env_add(node.id)
+        self.emit(node.id)
+        self.env_add(node.id)
 
     def visit_Assign(self, node):
         self.indent()
@@ -423,14 +444,18 @@ class PyLua(ast.NodeVisitor):
                 if isinstance(x, ast.Name) and not self.env_has(x.id):
                     newlocals.append(x.id)
             if len(newlocals) == len(node.targets[0].elts):
-                self.emit('local ')
+                # is it global or local? 
+                if self.indentation > 0:
+                    self.emit('local ')
             elif len(newlocals)>0:
-                self.emit('local ')
+                # is it global or local? 
+                if self.indentation > 0:
+                    self.emit('local ')
                 self.emit(', '.join(newlocals))
                 self.eol()
                 self.indent()
             self.visit_all_sep(node.targets[0].elts, ', ')
-            self.emit(' = table.unpack(')
+            self.emit(' = unpack(')
             self.visit(node.value)
             self.emit(')\n')
         elif len(node.targets) > 1:
@@ -439,7 +464,9 @@ class PyLua(ast.NodeVisitor):
         else:
             x = node.targets[0]
             if isinstance(x, ast.Name) and not self.env_has(x.id):
-                self.emit('local ')
+                # is it global or local? 
+                if self.indentation > 0:
+                    self.emit('local ')
             self.visit(x)
             self.emit(' = ')
             self.visit(node.value)
@@ -582,6 +609,7 @@ class PyLua(ast.NodeVisitor):
             self.indent()
             self.emit('::continue::\n')
             self.wantcontinue -= wantcontinue
+            assert 0, "continue is not in Lua."
         self.pop_scope()
 
         self.indent()
@@ -628,13 +656,14 @@ class PyLua(ast.NodeVisitor):
             self.indent()
             self.emit('local ')
             self.visit_all_sep(ituple.elts, ', ')
-            self.emit(' = table.unpack(PYLUA_x)\n')
+            self.emit(' = unpack(PYLUA_x)\n')
         self.visit_all(node.body)
         wantcontinue = {i for i in self.wantcontinue if i>=self.indentation}
         if len(wantcontinue) > 0:
             self.indent()
             self.emit('::continue::\n')
             self.wantcontinue -= wantcontinue
+            assert 0, "continue is not in Lua."
         self.pop_scope()
 
         self.indent()
@@ -654,6 +683,7 @@ class PyLua(ast.NodeVisitor):
         self.emit('goto continue\n')
         # FIXME: very rough heuristic
         self.wantcontinue.add(self.indentation-1)
+        assert 0, "Continue is non-existent in Lua!"
 
     def visit_ListComp(self, node):
         if len(node.generators)>1 or len(node.generators[0].ifs)>1:
@@ -679,11 +709,10 @@ class PyLua(ast.NodeVisitor):
 
     def visit_Compare(self, node):
         if len(node.ops)==1 and isinstance(node.ops[0], ast.NotIn):
-            self.emit('PYLUA.op_not_in(')
-            self.visit(node.left)
-            self.emit(', ')
             self.visit_all_sep(node.comparators, ', ')
-            self.emit(')')
+            self.emit('[')
+            self.visit(node.left)
+            self.emit('] == nil')
         elif len(node.ops)==1 and isinstance(node.ops[0], ast.In):
             if len(node.comparators)==1 and isinstance(node.comparators[0], ast.Attribute) and \
                     node.comparators[0].attr == 'keys':
@@ -693,11 +722,10 @@ class PyLua(ast.NodeVisitor):
                 self.visit(node.left)
                 self.emit(']')
                 return
-            self.emit('PYLUA.op_in(')
-            self.visit(node.left)
-            self.emit(', ')
             self.visit_all_sep(node.comparators, ', ')
-            self.emit(')')
+            self.emit('[')
+            self.visit(node.left)
+            self.emit('] ~= nil')
         elif len(node.ops)==1 and isinstance(node.ops[0], ast.Is):
             if len(node.comparators)==1 and isinstance(node.comparators[0], ast.Name) and \
                     node.comparators[0].id == 'None':
@@ -743,6 +771,16 @@ class PyLua(ast.NodeVisitor):
     def visit_Or(self, node):
         self.emit(' or ')
 
+    def visit_NameConstant(self, node):
+        if node.value == None:
+            self.emit('nil')
+        elif node.value == True:
+            self.emit('true')
+        elif node.value == False:
+            self.emit('false')
+        else:
+            assert 0, "Unknown NameConstant"
+
     def visit_Attribute(self, node):
         self.visit(node.value)
         self.emit('.')
@@ -752,7 +790,7 @@ class PyLua(ast.NodeVisitor):
         # TODO: prettier multiline strings (but must not have escape sequences other than \n)
         self.emit("'")
         # FIXME: better escaping of strings
-        self.emit(node.s.encode('utf8').encode('string_escape'))
+        self.emit(node.s)
         #self.emit(node.s.replace('\\', '\\\\').replace('"', '\\"'))
         self.emit("'")
 
@@ -822,7 +860,7 @@ def run_file(filename, dump=False):
 
     lua_program = visitor.stream.getvalue()
     if dump:
-        print _dump_ast(tree, include_attributes=True, whitespace=True)
+        print(_dump_ast(tree, include_attributes=True, whitespace=True))
     #    print '-'*80
     #    print lua_program
     #    print '-'*80
@@ -832,11 +870,11 @@ def run_file(filename, dump=False):
 
 def main():
     filename = sys.argv[1]
-    print run_file(filename, True)
+    print(run_file(filename, True))
 
 def runjit(program):
     filename = '_pylua_temp.lua'
-    open(filename, 'wb').write(program)
+    open(filename, 'w').write(program)
     #try:
     #    args = [lua_exe, filename]
     #    process = subprocess.Popen(args, stdout = subprocess.PIPE)
